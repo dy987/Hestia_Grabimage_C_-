@@ -209,8 +209,8 @@ int _tmain(int argc, _TCHAR* argv[])
 		int count = 0;
 
 
-		for (int i = aver_x; i < aver_x + aver_size; i++)
-			for (int j = aver_y; j < aver_y + aver_size; j++) {
+		for (int i = aver_y; i < aver_y + aver_size; i++)
+			for (int j = aver_x; j < aver_x + aver_size; j++) {
 				int val = (int)m_TempData[i* nWidth + j];
 				count++;
 				sum += val;
