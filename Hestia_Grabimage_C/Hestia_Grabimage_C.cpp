@@ -112,7 +112,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	int aver_x = 150;
 	int aver_y = 100;
-	int aver_size = 20;
+	int aver_size = 40;
 	clock_t time_cur = clock();
 	clock_t time_bef = 0;
 	int FPS_before = 0;
@@ -216,14 +216,14 @@ int _tmain(int argc, _TCHAR* argv[])
 		}
 		int sum = 0;
 		int count = 0;
-		if (0) {
+		if (1) {
 			//열정보 데이터를 이용한 영역 정보
-			//for (int i = aver_y; i < aver_y + aver_size; i++)
-			//	for (int j = aver_x; j < aver_x + aver_size; j++) {
-			//		int val = (int)m_TempData[i* nWidth + j];
-			//		count++;
-			//		sum += val;
-			//	}
+			for (int i = aver_y; i < aver_y + aver_size; i++)
+				for (int j = aver_x; j < aver_x + aver_size; j++) {
+					int val = (int)(m_TempData[i* nWidth + j] >> 3) << 5;
+					count++;
+					sum += val;
+				}
 		}
 		else {
 			//열정보를 이용한 데이터 
@@ -255,12 +255,12 @@ int _tmain(int argc, _TCHAR* argv[])
 				if (avr_data[i] < min_value)
 					min_value = avr_data[i];
 			}
-			cout << " FPS: " << FPS << " 평균 : " << aver << " max: " << max_value << " min : " << min_value << endl;
+			cout << " FPS: " << FPS << "  val: " << aver << "   Max: " << max_value << "   Min : " << min_value << endl;
 		}
 
 		double str_val = (aver - min_value) / ((max_value - min_value) + 1);
 		//data[99] = (int)(str_val * (GRAPH_HEIGHT*0.8));
-		data[99] = (int)(aver - min_value + 5) * 32;
+		data[99] = (int)(aver - min_value) * 8 + 20;
 		avr_data[99] = aver;
 		Make_Graph(Graph, data, timeLine);
 
