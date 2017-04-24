@@ -8,11 +8,11 @@
 #pragma comment(lib, "..\\..\\..\\lib\\Hestia_C.lib")
 using namespace cv;
 
-#define ADA 0
-#define RECORD_DATA 1
-#define CAL_AFFINE 0
+#define ADA 0  //얼굴 영역 검출
+#define RECORD_DATA 0  // 데이터 CSV파일로 저장
+#define CAL_AFFINE 0  //얼굴영역 좌표를 수정하기위한 AFFINE 변환 계산
 #define VIEW_RGB 0
-#define GRAPH_HEIGHT 1000
+#define GRAPH_HEIGHT 600
 void PrintInfomation(HESTIACONTEXT context);
 
 
@@ -42,6 +42,8 @@ int _tmain(int argc, _TCHAR* argv[])
 	HestiaError error;
 	int nWidth(0), nHeight(0);
 	int data[100] = { 0 };
+	int avr_data[100] = { 0 };
+
 	BOOL timeLine[100] = { FALSE };
 
 	// Hestia Create
@@ -106,11 +108,11 @@ int _tmain(int argc, _TCHAR* argv[])
 	fp_local = fopen("Temp_image_local.csv", "wt");
 	FILE * fp_aver;
 	fp_aver = fopen("Temp_local_aver.csv", "wt");
-	int aver_x = 150;
-	int aver_y = 100;
-	int aver_size = 30;
 #endif 
 
+	int aver_x = 150;
+	int aver_y = 100;
+	int aver_size = 20;
 	clock_t time_cur = clock();
 	clock_t time_bef = 0;
 	int FPS_before = 0;
@@ -118,8 +120,6 @@ int _tmain(int argc, _TCHAR* argv[])
 
 	//평균 필터링
 	int aver_filter[5] = { 0 };
-
-
 
 	//스트레칭을 위한 값
 	int max_value = 1000;
@@ -188,17 +188,26 @@ int _tmain(int argc, _TCHAR* argv[])
 		fp_local = fopen("Temp_image_local.csv", "wt");*/
 #endif 
 
+		//기본 그레이 이미지 Mat 형식으로 변경
+		for (int i = 0; i < nHeight; i++)
+			for (int j = 0; j < nWidth * 3; j++)
+				img.at<Vec3b>(i, j / 3)[j % 3] = m_ImageData[i* nWidth * 3 + j];
+
+		cvtColor(img, img_grey, CV_BGR2GRAY);
+
 		//열화상 데이터 Mat 형식으로 변경
 		int temp_num = 405;
 
-#if RECORD_DATA
+
 		for (int i = 0; i < nHeight; i++) {
 			for (int j = 0; j < nWidth; j++) {
 				img3.at<uchar>(i, j) = (int)m_TempData[i* nWidth + j] / 40;
-
+#if RECORD_DATA
 				if (imageFrame < temp_num && i == 200 && j == 50) {
 					fprintf(fp_local, "%d,", (int)m_TempData[i* nWidth + j]);
 				}
+#endif 
+
 				/*if (j == nWidth - 1)
 					fprintf(fp2, "%d\n", (int)m_TempData[i* nWidth + j]);
 				else
@@ -207,47 +216,58 @@ int _tmain(int argc, _TCHAR* argv[])
 		}
 		int sum = 0;
 		int count = 0;
+		if (0) {
+			//열정보 데이터를 이용한 영역 정보
+			//for (int i = aver_y; i < aver_y + aver_size; i++)
+			//	for (int j = aver_x; j < aver_x + aver_size; j++) {
+			//		int val = (int)m_TempData[i* nWidth + j];
+			//		count++;
+			//		sum += val;
+			//	}
+		}
+		else {
+			//열정보를 이용한 데이터 
+			for (int i = aver_y; i < aver_y + aver_size; i++)
+				for (int j = aver_x; j < aver_x + aver_size; j++) {
+					unsigned char  val = img_grey.at<uchar>(i, j) << 4;
+					count++;
+					sum += val;
+				}
 
-
-		for (int i = aver_x; i < aver_x + aver_size; i++)
-			for (int j = aver_y; j < aver_y + aver_size; j++) {
-				int val = (int)m_TempData[i* nWidth + j];
-				count++;
-				sum += val;
-			}
+		}
 
 		int aver = (int)((sum / count));
 
 
 
-		//스트레칭 범위 계산
-		if (imageFrame > 30 && imageFrame < 50) {
-			if (min_value > aver);
-			min_value = aver;
-		}
-
-
-		data[99] = (aver - 3700) * 8;
+		//data[99] = (aver - 3700) * 8;
 
 		if (timeLine[99] == TRUE) {
-			cout << " FPS: " << FPS << " 평균 : " << aver << endl;
 
-			for (int i = 0; i < nHeight; i++) {
-				for (int j = 0; j < nWidth; j++) {
+			//스트레칭 범위 계산
+			min_value = 1000000;
+			max_value = -1;
 
-					if (min_value > (int)m_TempData[i* nWidth + j]);
-					min_value = (int)m_TempData[i* nWidth + j];
+			for (int i = 50; i < 100; i++) {
+				if (avr_data[i] > max_value)
+					max_value = avr_data[i];
 
-					if (max_value > (int)m_TempData[i* nWidth + j]);
-					max_value = (int)m_TempData[i* nWidth + j];
-				}
+				if (avr_data[i] < min_value)
+					min_value = avr_data[i];
 			}
-
+			cout << " FPS: " << FPS << " 평균 : " << aver << " max: " << max_value << " min : " << min_value << endl;
 		}
 
+		double str_val = (aver - min_value) / ((max_value - min_value) + 1);
+		//data[99] = (int)(str_val * (GRAPH_HEIGHT*0.8));
+		data[99] = (int)(aver - min_value + 5) * 32;
+		avr_data[99] = aver;
 		Make_Graph(Graph, data, timeLine);
 
+		for (int i = 1; i < 100; i++)
+			avr_data[i - 1] = avr_data[i];
 
+#if RECORD_DATA
 		if (imageFrame > 10 && imageFrame < temp_num)
 			fprintf(fp_aver, "%d,", (int)(sum / count));
 		if (imageFrame == temp_num)
@@ -255,31 +275,32 @@ int _tmain(int argc, _TCHAR* argv[])
 
 		if (imageFrame == temp_num)
 			fclose(fp_local);
-#endif 
+
 		for (int i = 0; i < nHeight; i++) {
 			for (int j = 0; j < nWidth * 3; j++) {
-				img.at<Vec3b>(i, j / 3)[j % 3] = m_ImageData[i* nWidth * 3 + j];
 
-#if RECORD_DATA
 				/*if (j % 3 == 0) {
 					if (j / 3 == nWidth - 1)
 						fprintf(fp, "%d\n", (int)m_ImageData[i* nWidth * 3 + j]);
 					else
 						fprintf(fp, "%d,", (int)m_ImageData[i* nWidth * 3 + j]);
 				}*/
-#endif 
+
 			}
 		}
-
-
-#if RECORD_DATA
 
 		/*fclose(fp);
 		fclose(fp2);*/
 
 #endif 
 		// 열화상 원본 데이터를 그레이영상으로 변경 및 사이즈 확대
-		cvtColor(img, img_grey, CV_BGR2GRAY);
+
+
+		//원본 이미지 증폭
+		for (int i = aver_x; i < aver_x + aver_size; i++)
+			for (int j = aver_y; j < aver_y + aver_size; j++) {
+				img_grey.at<uchar>(j, i) = img_grey.at<uchar>(j, i) << 4;
+			}
 
 
 		//RGB 및 열화상 카메라 포인트 좌표값 및 포인트 배열
@@ -301,7 +322,7 @@ int _tmain(int argc, _TCHAR* argv[])
 			for (int i = 0; i < 4; i++) {
 				ori_point[i].setPoint(100 + i, 100 + i);
 				object_point[i].setPoint(100 + i, 100 + i);
-			}
+	}
 #else			
 			for (int i = 0; i < 4; i++) {
 				ori_point[i].setPoint(ori_point_x[i], ori_point_y[i]);
@@ -319,7 +340,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		for (int i = 0; i < 4; i++) {
 			line(img_rgb, Point(ori_point[i].x, ori_point[i].y), Point(ori_point[i].x, ori_point[i].y), color, 1);
 			line(img_grey, Point(object_point[i].x, object_point[i].y), Point(object_point[i].x, object_point[i].y), color2, 1);
-		}
+}
 #endif
 
 
