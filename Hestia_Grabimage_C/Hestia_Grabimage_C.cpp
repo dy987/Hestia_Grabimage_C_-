@@ -3,35 +3,24 @@
 #include "stdafx.h"
 #include "affine.h"
 #include "use_opencv.h"
-
 #include "..\..\..\\include\Hestia_C.h"
 #pragma comment(lib, "..\\..\\..\\lib\\Hestia_C.lib")
 using namespace cv;
 
+
+#define SQUARE(x)  ((x)*(x))
+
 #define ADA 0  //얼굴 영역 검출
-#define RECORD_DATA 0  // 데이터 CSV파일로 저장
+#define RECORD_DATA 1  // 데이터 CSV파일로 저장
 #define CAL_AFFINE 0  //얼굴영역 좌표를 수정하기위한 AFFINE 변환 계산
 #define VIEW_RGB 0
 #define GRAPH_HEIGHT 600
+#define DATA_COUNT 100
+#define HEART_RATE_COUNT 5
+
 void PrintInfomation(HESTIACONTEXT context);
-
-
-void Make_Graph(Mat graph, int *data, BOOL *time) {
-
-	for (int i = 1; i < 100; i++) {
-
-		line(graph, Point((i - 1) * 10, GRAPH_HEIGHT - data[i - 1]), Point(i * 10, GRAPH_HEIGHT - data[i]), Scalar(255, 255, 255), 1);
-
-		if (time[i] == TRUE)
-			line(graph, Point((i - 1) * 10, GRAPH_HEIGHT - 0), Point((i - 1) * 10, 0), Scalar(255, 0, 0), 1);
-	}
-
-	for (int i = 1; i < 100; i++) {
-		data[i - 1] = data[i];
-		time[i - 1] = time[i];
-	}
-	time[99] = FALSE;
-}
+int myDFT(const float *data, const int N, const int fps, float low_hz, float high_hz);
+void Make_Graph(Mat graph, int *data, BOOL *time);
 
 
 int _tmain(int argc, _TCHAR* argv[])
@@ -41,10 +30,11 @@ int _tmain(int argc, _TCHAR* argv[])
 	unsigned short* m_TempData = NULL;
 	HestiaError error;
 	int nWidth(0), nHeight(0);
-	int data[100] = { 0 };
-	int avr_data[100] = { 0 };
+	int data[DATA_COUNT] = { 0 };
+	float avr_data[DATA_COUNT] = { 0.0 };
+	int heartRates[HEART_RATE_COUNT] = { 0 };
 
-	BOOL timeLine[100] = { FALSE };
+	BOOL timeLine[DATA_COUNT] = { FALSE };
 
 	// Hestia Create
 	error = Hestia_CreateContext(&m_HestiaContext);
@@ -104,10 +94,11 @@ int _tmain(int argc, _TCHAR* argv[])
 
 
 #if RECORD_DATA
-	FILE * fp_local;
-	fp_local = fopen("Temp_image_local.csv", "wt");
+	// 시간에 따른 데이터 변화량 측정
+	FILE * fp_Pixel;
+	fp_Pixel = fopen("Temp_Pixel.csv", "wt");// 특정필셀 데이터 기록
 	FILE * fp_aver;
-	fp_aver = fopen("Temp_local_aver.csv", "wt");
+	fp_aver = fopen("Temp_local_aver.csv", "wt"); // 특정영역의 데이터 평균값 기록
 #endif 
 
 	int aver_x = 150;
@@ -126,17 +117,19 @@ int _tmain(int argc, _TCHAR* argv[])
 	int min_value = 8000;
 
 
-	for (int imageFrame = 0; imageFrame < 100000; ++imageFrame)
+	for (int Frame_Count = 0; Frame_Count < 100000; ++Frame_Count)
 	{
+		//프레임 표시
 		time_cur = clock();
 		if (time_cur - time_bef >= 1000) {
 			time_bef = time_cur;
-			FPS = imageFrame - FPS_before;
-			FPS_before = imageFrame;
-			timeLine[99] = TRUE;
+			FPS = Frame_Count - FPS_before;
+			FPS_before = Frame_Count;
+			timeLine[DATA_COUNT - 1] = TRUE;
+			cout << "FPS: " << FPS << " " << Frame_Count << " " << FPS_before << endl;
 		}
 		else
-			timeLine[99] = FALSE;
+			timeLine[DATA_COUNT - 1] = FALSE;
 
 		error = Hestia_GetData(m_HestiaContext, &nWidth, &nHeight, HestiaType::HESTIA_GREY, 24, &m_ImageData, &m_TempData, false);
 
@@ -156,7 +149,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		gray = Mat(nHeight, nWidth, CV_8UC1);
 
 		//RGB 카메라 초기 세팅
-		if (imageFrame < 5) {
+		if (Frame_Count < 5) {
 			vc.set(CV_CAP_PROP_FRAME_WIDTH, 640);
 			vc.set(CV_CAP_PROP_FRAME_HEIGHT, 540);
 		}
@@ -180,12 +173,10 @@ int _tmain(int argc, _TCHAR* argv[])
 
 
 #if RECORD_DATA
-		/*FILE * fp;
+		FILE * fp;
 		FILE * fp2;
-		FILE * fp_local;
 		fp = fopen("Data_image1.csv", "wt");
 		fp2 = fopen("Data_Temp.csv", "wt");
-		fp_local = fopen("Temp_image_local.csv", "wt");*/
 #endif 
 
 		//기본 그레이 이미지 Mat 형식으로 변경
@@ -198,20 +189,9 @@ int _tmain(int argc, _TCHAR* argv[])
 		//열화상 데이터 Mat 형식으로 변경
 		int temp_num = 405;
 
-
 		for (int i = 0; i < nHeight; i++) {
 			for (int j = 0; j < nWidth; j++) {
 				img3.at<uchar>(i, j) = (int)m_TempData[i* nWidth + j] / 40;
-#if RECORD_DATA
-				if (imageFrame < temp_num && i == 200 && j == 50) {
-					fprintf(fp_local, "%d,", (int)m_TempData[i* nWidth + j]);
-				}
-#endif 
-
-				/*if (j == nWidth - 1)
-					fprintf(fp2, "%d\n", (int)m_TempData[i* nWidth + j]);
-				else
-					fprintf(fp2, "%d,", (int)m_TempData[i* nWidth + j]);*/
 			}
 		}
 		int sum = 0;
@@ -220,13 +200,14 @@ int _tmain(int argc, _TCHAR* argv[])
 			//열정보 데이터를 이용한 영역 정보
 			for (int i = aver_y; i < aver_y + aver_size; i++)
 				for (int j = aver_x; j < aver_x + aver_size; j++) {
-					int val = (int)(m_TempData[i* nWidth + j] >> 3) << 5;
+					int tem_val = (int)m_TempData[i* nWidth + j];
+					int val = (tem_val >> 1) << 3;
 					count++;
 					sum += val;
 				}
 		}
 		else {
-			//열정보를 이용한 데이터 
+			//흑백 영상을 이용한 데이터 추출
 			for (int i = aver_y; i < aver_y + aver_size; i++)
 				for (int j = aver_x; j < aver_x + aver_size; j++) {
 					unsigned char  val = img_grey.at<uchar>(i, j) << 4;
@@ -236,61 +217,81 @@ int _tmain(int argc, _TCHAR* argv[])
 
 		}
 
-		int aver = (int)((sum / count));
+		float aver = (float)((sum / count));
 
-
-
-		//data[99] = (aver - 3700) * 8;
-
-		if (timeLine[99] == TRUE) {
-
+		avr_data[DATA_COUNT - 1] = aver;
+		if (timeLine[DATA_COUNT - 1] == TRUE) {
+			int averHeartRate = 0;
 			//스트레칭 범위 계산
 			min_value = 1000000;
 			max_value = -1;
 
-			for (int i = 50; i < 100; i++) {
+			for (int i = DATA_COUNT - 50; i < DATA_COUNT; i++) {
 				if (avr_data[i] > max_value)
 					max_value = avr_data[i];
 
 				if (avr_data[i] < min_value)
 					min_value = avr_data[i];
 			}
-			cout << " FPS: " << FPS << "  val: " << aver << "   Max: " << max_value << "   Min : " << min_value << endl;
+
+
+			if (avr_data[0] > 0) {
+				for (int i = 1; i < HEART_RATE_COUNT; i++)
+					heartRates[i - 1] = heartRates[i];
+
+				heartRates[HEART_RATE_COUNT - 1] = myDFT(avr_data, DATA_COUNT, FPS, 0.7, 2.0);
+
+				if (heartRates[0] > 0) {
+					for (int i = 0; i < HEART_RATE_COUNT; i++)
+						averHeartRate += heartRates[i];
+				}
+			}
+
+			cout << "Val: " << aver << "  Max: " << max_value << "  Min: " << min_value << endl;
+			cout << "Max-Min: " << max_value - min_value << "  STR_val: " << (aver - min_value) << endl << endl;
 		}
 
-		double str_val = (aver - min_value) / ((max_value - min_value) + 1);
-		//data[99] = (int)(str_val * (GRAPH_HEIGHT*0.8));
-		data[99] = (int)(aver - min_value) * 8 + 20;
-		avr_data[99] = aver;
+		//double str_val = (aver - min_value) / ((max_value - min_value) + 1);
+		//data[DATA_COUNT-1] = (int)(str_val * (GRAPH_HEIGHT*0.8));
+		data[DATA_COUNT - 1] = (int)(aver - min_value) + 150;
+
 		Make_Graph(Graph, data, timeLine);
 
-		for (int i = 1; i < 100; i++)
+		for (int i = 1; i < DATA_COUNT; i++)
 			avr_data[i - 1] = avr_data[i];
 
 #if RECORD_DATA
-		if (imageFrame > 10 && imageFrame < temp_num)
-			fprintf(fp_aver, "%d,", (int)(sum / count));
-		if (imageFrame == temp_num)
+		if (Frame_Count > 10 && Frame_Count < 400) {
+			fprintf(fp_aver, "%d,", (int)m_TempData[50 * nWidth + 50]);
+			fprintf(fp_Pixel, "%d,", (int)img_grey.at<uchar>(50, 50));
+		}
+		else if (Frame_Count == 400) {
 			fclose(fp_aver);
-
-		if (imageFrame == temp_num)
-			fclose(fp_local);
-
-		for (int i = 0; i < nHeight; i++) {
-			for (int j = 0; j < nWidth * 3; j++) {
-
-				/*if (j % 3 == 0) {
-					if (j / 3 == nWidth - 1)
-						fprintf(fp, "%d\n", (int)m_ImageData[i* nWidth * 3 + j]);
-					else
-						fprintf(fp, "%d,", (int)m_ImageData[i* nWidth * 3 + j]);
-				}*/
-
-			}
+			fclose(fp_Pixel);
 		}
 
-		/*fclose(fp);
-		fclose(fp2);*/
+		if (Frame_Count == 100) {
+			/*for (int i = 0; i < nHeight; i++) {
+				for (int j = 0; j < nWidth * 3; j++) {
+
+					if (j % 3 == 0) {
+						if (j / 3 == nwidth - 1)
+							fprintf(fp, "%d\n", (int)m_imagedata[i* nwidth * 3 + j]);
+						else
+							fprintf(fp, "%d,", (int)m_imagedata[i* nwidth * 3 + j]);
+					}
+
+					if (j == nwidth - 1)
+						fprintf(fp2, "%d\n", (int)m_tempdata[i* nwidth + j]);
+					else
+						fprintf(fp2, "%d,", (int)m_tempdata[i* nwidth + j]);
+
+				}
+			}*/
+
+			fclose(fp);
+			fclose(fp2);
+		}
 
 #endif 
 		// 열화상 원본 데이터를 그레이영상으로 변경 및 사이즈 확대
@@ -317,12 +318,12 @@ int _tmain(int argc, _TCHAR* argv[])
 		Scalar color(0, 0, 200);
 		Scalar color2(255, 255, 255);
 
-		if (imageFrame < 2)
+		if (Frame_Count < 2)
 #if CAL_AFFINE
 			for (int i = 0; i < 4; i++) {
 				ori_point[i].setPoint(100 + i, 100 + i);
 				object_point[i].setPoint(100 + i, 100 + i);
-	}
+			}
 #else			
 			for (int i = 0; i < 4; i++) {
 				ori_point[i].setPoint(ori_point_x[i], ori_point_y[i]);
@@ -340,7 +341,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		for (int i = 0; i < 4; i++) {
 			line(img_rgb, Point(ori_point[i].x, ori_point[i].y), Point(ori_point[i].x, ori_point[i].y), color, 1);
 			line(img_grey, Point(object_point[i].x, object_point[i].y), Point(object_point[i].x, object_point[i].y), color2, 1);
-}
+		}
 #endif
 
 
@@ -352,7 +353,7 @@ int _tmain(int argc, _TCHAR* argv[])
 #endif
 
 		//// AFFINE 행령 계산하기
-		if (imageFrame < 5)
+		if (Frame_Count < 5)
 			matrixcalc(&matrix[0][0], ori_point, object_point);
 
 		for (int i = 0; i < 3; i++) {
@@ -516,4 +517,73 @@ void KeyInput(int& selectNumber, Point_xy* ori_point, Point_xy* object_point) {
 
 		}
 	}
+}
+
+int myDFT(const float *data, const int N, const int fps, float low_hz, float high_hz)
+{
+	int padN = N * 10;
+	float sampling_time = padN / (float)fps;
+	float freq_resolution = 1 / sampling_time;
+	int max_freq = padN / 2;
+	int low = static_cast<int>(low_hz * sampling_time); // 42 bpm
+	int high = static_cast<int>(high_hz * sampling_time); // 240 bpm
+
+	cv::Mat planes[2] = { cv::Mat::zeros(padN, 1, CV_32F), cv::Mat::zeros(padN, 1, CV_32F) };
+	cv::Mat complex;
+
+	// 평균값 계산
+	float sum = .0f;
+	for (size_t i = 0; i < N; ++i)
+		sum += data[i];
+
+	float avg = sum / (float)N;
+
+	// DC 성분 제거
+	for (int i = 0; i < N; ++i)
+		planes[0].at<float>(i) = data[i] - avg;
+
+	cv::merge(planes, 2, complex);
+
+	// DFT 수행
+	cv::dft(complex, complex);
+	split(complex, planes);
+
+	// magnitude 계산
+	float *magnitude = new float[max_freq];
+	for (int i = 0; i < max_freq; i++)
+		magnitude[i] = sqrt(SQUARE(planes[0].at<float>(i) * planes[0].at<float>(i)) + SQUARE(planes[1].at<float>(i) * planes[1].at<float>(i)));
+
+	// [low, high] 구간 내 max magnitude 탐색
+	int max_idx;
+	float max_power = 0;
+	for (int i = low; i <= high; ++i) {
+		if (magnitude[i] > max_power) {
+			max_power = magnitude[i];
+			max_idx = i;
+		}
+	}
+
+	delete[] magnitude;
+
+	// 심박수 계산
+	int heartRates = static_cast<int>(max_idx * freq_resolution * 60.0f);
+
+	return heartRates;
+}
+
+void Make_Graph(Mat graph, int *data, BOOL *time) {
+
+	for (int i = 1; i < DATA_COUNT; i++) {
+
+		line(graph, Point((i - 1) * 10, GRAPH_HEIGHT - data[i - 1]), Point(i * 10, GRAPH_HEIGHT - data[i]), Scalar(255, 255, 255), 3);
+
+		if (time[i] == TRUE)
+			line(graph, Point((i - 1) * 10, GRAPH_HEIGHT - 0), Point((i - 1) * 10, 0), Scalar(255, 0, 0), 1);
+	}
+
+	for (int i = 1; i < DATA_COUNT; i++) {
+		data[i - 1] = data[i];
+		time[i - 1] = time[i];
+	}
+	time[DATA_COUNT - 1] = FALSE;
 }
